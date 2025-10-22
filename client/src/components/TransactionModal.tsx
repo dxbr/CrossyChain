@@ -8,6 +8,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CheckCircle2, XCircle, Loader2, ExternalLink } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface TransactionModalProps {
   isOpen: boolean;
@@ -15,6 +16,7 @@ interface TransactionModalProps {
   hash?: string;
   error?: string;
   explorerUrl?: string;
+  method?: "smartAccount" | "eoa";
   onClose: () => void;
 }
 
@@ -24,6 +26,7 @@ export function TransactionModal({
   hash,
   error,
   explorerUrl,
+  method,
   onClose,
 }: TransactionModalProps) {
   const getStatusIcon = () => {
@@ -82,6 +85,18 @@ export function TransactionModal({
             {getStatusDescription()}
           </DialogDescription>
         </DialogHeader>
+
+        {method && status === "success" && (
+          <div className="flex justify-center mb-2">
+            <Badge 
+              variant={method === "smartAccount" ? "default" : "secondary"}
+              className="text-[10px] font-mono"
+              data-testid={`badge-method-${method}`}
+            >
+              {method === "smartAccount" ? "Smart Account Transaction" : "EOA Wallet Transaction"}
+            </Badge>
+          </div>
+        )}
 
         {hash && (
           <div className="bg-muted/50 p-3 rounded-md border border-border" data-testid="container-tx-hash">

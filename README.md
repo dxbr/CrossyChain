@@ -1,40 +1,57 @@
-# 🎮 Crossy Chain
+# Crossy Chain
 
-**Gasless 3D On-Chain Game powered by MetaMask Smart Accounts on Monad Testnet**
+A blockchain-enabled 3D game where players navigate a chicken across lanes of traffic and their high scores are permanently recorded on the Monad blockchain using MetaMask Smart Accounts.
 
-A blockchain-enabled Crossy Road clone where your high scores are permanently recorded on the Monad blockchain using gasless transactions via MetaMask Smart Accounts.
+Built for the MetaMask Smart Accounts x Monad Dev Cook Off hackathon.
 
----
+## Overview
 
-## 🎯 Overview
-
-Crossy Chain transforms the classic arcade experience into a Web3 gaming platform. Players navigate a chicken across treacherous lanes while their achievements are immutably stored on-chain. Built for the **MetaMask × Monad Dev Cook-Off**.
+Crossy Chain is a Web3-enabled Crossy Road clone that combines classic arcade gameplay with blockchain technology. All high scores are stored permanently on the Monad testnet via ERC-4337 Smart Account transactions.
 
 ### Key Features
 
-- 🎨 **Retro Pixel Aesthetic**: Authentic 8-bit visual style with Press Start 2P font
-- 🔗 **Blockchain Integration**: Scores saved permanently on Monad Testnet
-- 💸 **Gasless Transactions**: MetaMask Smart Accounts enable sponsored gas fees
-- 🎮 **3D Gameplay**: Smooth Three.js rendering with responsive controls
-- 🔍 **Transparent Verification**: All scores viewable on Monad Explorer
+- 3D gameplay powered by Three.js
+- MetaMask Smart Account integration using the Delegation Toolkit SDK
+- ERC-4337 user operations via Alchemy bundler
+- On-chain score storage on Monad testnet
+- Retro pixel aesthetic with Press Start 2P font
+- Real-time balance display for Smart Accounts
+- Automatic Smart Account deployment on first transaction
 
----
+## Technology Stack
 
-## 🚀 Quick Start
+### Frontend
+- React with TypeScript
+- Three.js for 3D rendering
+- Viem for Ethereum interactions
+- Shadcn UI components
+- Tailwind CSS for styling
+- Wouter for routing
+
+### Blockchain
+- Monad Testnet (Chain ID: 10143)
+- MetaMask Delegation Toolkit for Smart Accounts
+- Alchemy bundler for ERC-4337 operations
+- Solidity 0.8.20
+- Hardhat development environment
+
+### Smart Contract
+- ScoreStore.sol: Simple score storage contract
+- Only accepts scores higher than previous records
+- Emits events for off-chain indexing
+
+## Quick Start
 
 ### Prerequisites
 
-- Node.js 20+
+- Node.js 20 or higher
 - MetaMask browser extension
-- Monad testnet MON tokens (for contract deployment)
+- Monad testnet MON tokens
+- Alchemy API key
 
 ### Installation
 
 ```bash
-# Clone the repository
-git clone <repo-url>
-cd crossy-chain
-
 # Install dependencies
 npm install
 
@@ -42,78 +59,86 @@ npm install
 npm run dev
 ```
 
-### Deploy Smart Contract
+The application will be available at http://localhost:5000
+
+### Environment Variables
+
+Required environment variables (stored in Replit Secrets):
+
+- `VITE_CONTRACT_ADDRESS`: Deployed ScoreStore contract address
+- `VITE_ALCHEMY_API_KEY`: Alchemy API key for bundler operations
+
+Optional:
+- `MONAD_RPC`: Monad RPC URL (defaults to https://rpc.ankr.com/monad_testnet)
+
+### Smart Contract Deployment
 
 ```bash
-# Configure environment
-cp .env.example .env
-# Add your PRIVATE_KEY to .env
+# Set your private key for deployment
+export PRIVATE_KEY=your_private_key_here
 
 # Deploy to Monad Testnet
 npx hardhat run web3/scripts/deploy.js --network monad
 
-# Copy the deployed contract address to your frontend
+# Copy the deployed contract address
+# Add it to VITE_CONTRACT_ADDRESS in Replit Secrets
 ```
 
----
+## How to Play
 
-## 🎮 How to Play
+1. Click "Connect Wallet" to create a MetaMask Smart Account
+2. Fund your Smart Account with MON tokens (displayed in the balance)
+3. Use arrow keys or on-screen buttons to move the chicken
+4. Cross lanes to earn points, avoid vehicles
+5. When game ends, scores are automatically submitted to blockchain
+6. View your transaction on Monad Explorer
 
-1. **Connect Wallet**: Click "Connect Wallet" in the top-left corner
-2. **Start Playing**: Use arrow keys (↑ ↓ ← →) or on-screen buttons
-3. **Navigate Safely**: Avoid cars and trucks crossing the road
-4. **Earn Points**: Each lane crossed forward increases your score
-5. **Save On-Chain**: Game over automatically triggers blockchain save
-
----
-
-## 🏗️ Technology Stack
-
-### Frontend
-- **React** + **TypeScript** - Modern UI framework
-- **Three.js** - 3D game rendering
-- **Shadcn UI** - Component library
-- **Tailwind CSS** - Utility-first styling
-
-### Blockchain
-- **Monad Testnet** - High-performance L1 blockchain
-- **Viem** - TypeScript Ethereum client
-- **MetaMask Delegation Toolkit** - Smart Account SDK
-- **Hardhat** - Smart contract development
-
-### Smart Contract
-- **Solidity 0.8.20** - Contract language
-- **ScoreStore.sol** - On-chain score persistence
-
----
-
-## 📁 Project Structure
+## Project Structure
 
 ```
 crossy-chain/
 ├── client/src/
-│   ├── components/          # React UI components
-│   │   ├── WalletConnectCard.tsx
-│   │   ├── TransactionModal.tsx
-│   │   ├── GameControls.tsx
-│   │   └── ...
-│   ├── pages/
-│   │   └── game.tsx        # Main game page
-│   └── index.css           # Design system
-├── shared/
-│   └── schema.ts           # TypeScript types
+│   ├── components/       # React UI components
+│   ├── pages/           # Game and leaderboard pages
+│   ├── lib/             # Web3 integration and game logic
+│   └── index.css        # Design system
+├── server/              # Express backend
+├── shared/              # Shared TypeScript types
 ├── web3/
-│   ├── contracts/
-│   │   └── ScoreStore.sol  # Score storage contract
-│   ├── scripts/
-│   │   └── deploy.js       # Deployment script
-│   └── hardhat.config.js   # Network configuration
+│   ├── contracts/       # Solidity contracts
+│   └── scripts/         # Deployment scripts
 └── package.json
 ```
 
----
+## Smart Account Integration
 
-## 🔐 Smart Contract
+This project uses MetaMask's Delegation Toolkit to create ERC-4337 Smart Accounts:
+
+### Flow
+1. User connects MetaMask (EOA wallet)
+2. System creates a Smart Account linked to the EOA
+3. Smart Account address and balance displayed in UI
+4. Score submissions use user operations via Alchemy bundler
+5. First transaction automatically deploys the Smart Account
+
+### Benefits
+- Account abstraction (ERC-4337 compliant)
+- Better UX for blockchain transactions
+- Future support for gasless transactions with paymasters
+- Separation of signing key and account logic
+
+## Network Details
+
+| Parameter | Value |
+|-----------|-------|
+| Network Name | Monad Testnet |
+| RPC URL | https://rpc.ankr.com/monad_testnet |
+| Chain ID | 10143 |
+| Currency Symbol | MON |
+| Block Explorer | https://testnet.monadexplorer.com |
+| Bundler | Alchemy (https://monad-testnet.g.alchemy.com) |
+
+## Smart Contract
 
 ### ScoreStore.sol
 
@@ -134,107 +159,66 @@ contract ScoreStore {
 }
 ```
 
-**Key Features:**
-- Only accepts higher scores (prevents score degradation)
+Features:
+- Only accepts higher scores to prevent score manipulation
 - Gas-efficient storage using mappings
-- Event emission for off-chain indexing
-- Simple, auditable code
+- Event emission for indexing and verification
+- Simple and auditable code
 
----
-
-## 🌐 Monad Network Details
-
-| Parameter | Value |
-|-----------|-------|
-| **Network Name** | Monad Testnet |
-| **RPC URL** | https://testnet-rpc.monad.xyz/ |
-| **Chain ID** | 10143 (0x279f) |
-| **Currency** | MON |
-| **Explorer** | https://testnet.monadexplorer.com/ |
-
----
-
-## 🎨 Design Philosophy
-
-Crossy Chain blends nostalgic 8-bit gaming with modern Web3 UX:
-
-- **Pixel-Perfect Typography**: Press Start 2P font for authentic retro feel
-- **Vibrant Color Palette**: Game-inspired greens (grass) and reds (danger)
-- **Glassmorphism Overlays**: Modern UI cards with backdrop blur
-- **Smooth Animations**: Delightful micro-interactions on all elements
-
----
-
-## 🧪 Testing
+## Building for Production
 
 ```bash
-# Run smart contract tests
-npx hardhat test
+# Build the application
+npm run build
 
-# Compile contracts
-npx hardhat compile
-
-# Run frontend (includes game testing)
-npm run dev
+# The output will be in the dist/ folder
+# Deploy to your hosting service (Netlify, Vercel, etc.)
 ```
 
----
+For deployment configuration, see `netlify.toml` and `client/public/_redirects`.
 
-## 🛣️ Roadmap
+## Troubleshooting
 
-### MVP (Current)
-- [x] Core gameplay mechanics
-- [x] Wallet connection
-- [x] On-chain score storage
-- [x] Transaction confirmations
+### Transaction Loading Too Long
+- Ensure you have VITE_ALCHEMY_API_KEY set correctly
+- Check that your Smart Account has sufficient MON balance
+- Monad testnet may experience congestion during peak times
 
-### Future Enhancements
-- [ ] MetaMask Smart Account integration with Delegation Toolkit SDK
-- [ ] Paymaster integration for true gasless transactions
-- [ ] Leaderboard contract (top 10 global scores)
-- [ ] NFT badges for achievements
-- [ ] Mobile app (React Native)
-- [ ] Multiplayer mode
+### Smart Account Has No Balance
+- Copy your Smart Account address from the game UI
+- Send MON tokens from MetaMask to the Smart Account address
+- Balance updates automatically every 5 seconds
 
-**Note:** The current MVP uses standard MetaMask wallet integration. Smart Account gasless functionality is planned for v2.0.
+### MetaMask Connection Issues
+- Ensure MetaMask extension is installed
+- Check that you're on Monad Testnet network
+- Try refreshing the page and reconnecting
 
----
+## Hackathon Compliance
 
-## 🤝 Contributing
+This project meets all requirements for the MetaMask Smart Accounts x Monad Dev Cook Off:
 
-This is a hackathon submission, but contributions are welcome:
+- Uses MetaMask Smart Accounts via Delegation Toolkit SDK
+- Deployed on Monad testnet
+- Integration shown in main application flow (score submission)
+- Signer-agnostic approach (works with MetaMask extension)
+- ERC-4337 compliant user operations
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+## Documentation
 
----
+Additional documentation files:
 
-## 📜 License
+- `SETUP.md`: Detailed setup instructions
+- `SMART_ACCOUNT_SETUP.md`: Smart Account technical details
+- `ARCHITECTURE_EXPLANATION.md`: System architecture
+- `replit.md`: Project overview and development status
 
-MIT License - see LICENSE file for details
+## License
 
----
+MIT License
 
-## 🙏 Acknowledgments
+## Contact
 
-- **MetaMask** for Smart Account technology
-- **Monad** for high-performance blockchain infrastructure
-- Original Crossy Road game for inspiration
-- Three.js community for 3D rendering support
+Built for the MetaMask Smart Accounts x Monad Dev Cook Off hackathon.
 
----
-
-## 📧 Contact
-
-Built for the **MetaMask × Monad Dev Cook-Off**
-
-- Demo: [Coming Soon]
-- Repo: [This Repository]
-- Contract: [Deployed Address TBD]
-
----
-
-**Play. Score. Own Your Achievements. Welcome to Crossy Chain.** 🐔⛓️
+Contract Address: 0x8c2b26d35c3c749ff1f4dc91c36a81b304ce36ee (Monad Testnet)

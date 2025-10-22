@@ -15,11 +15,14 @@ export const transactionStatusSchema = z.enum([
   "failed",
 ]);
 
+export const transactionMethodSchema = z.enum(["smartAccount", "eoa"]);
+
 export const transactionDataSchema = z.object({
   hash: z.string().optional(),
   status: transactionStatusSchema,
   error: z.string().optional(),
   explorerUrl: z.string().optional(),
+  method: transactionMethodSchema.optional(),
 });
 
 export const scoreDataSchema = z.object({
@@ -31,5 +34,6 @@ export const scoreDataSchema = z.object({
 
 export type WalletState = z.infer<typeof walletStateSchema>;
 export type TransactionStatus = z.infer<typeof transactionStatusSchema>;
+export type TransactionMethod = z.infer<typeof transactionMethodSchema>;
 export type TransactionData = z.infer<typeof transactionDataSchema>;
 export type ScoreData = z.infer<typeof scoreDataSchema>;

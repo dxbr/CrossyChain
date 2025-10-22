@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useLocation } from "wouter";
 import { WalletConnectCard } from "@/components/WalletConnectCard";
+import { WalletBalanceCard } from "@/components/WalletBalanceCard";
 import { NetworkBadge } from "@/components/NetworkBadge";
 import { TransactionModal } from "@/components/TransactionModal";
 import { GameControls } from "@/components/GameControls";
@@ -11,8 +12,9 @@ import { Button } from "@/components/ui/button";
 import { TrendingUp } from "lucide-react";
 import type { WalletState, TransactionData } from "@shared/schema";
 import { initializeGame } from "@/lib/game";
-import { connectWallet, saveScoreToBlockchain, getExplorerUrl } from "@/lib/web3";
+import { connectWallet, saveScoreToBlockchain, getExplorerUrl, getCurrentSmartAccountAddress } from "@/lib/web3";
 import { useToast } from "@/hooks/use-toast";
+import type { Address } from "viem";
 
 export default function Game() {
   const canvasRef = useRef<HTMLDivElement>(null);
@@ -74,12 +76,21 @@ export default function Game() {
     setWalletState((prev) => ({ ...prev, isConnecting: true }));
 
     try {
-      const address = await connectWallet();
+      const eoaAddress = await connectWallet();
+      const smartAccountAddress = getCurrentSmartAccountAddress();
+      
       setWalletState({
         isConnected: true,
         isConnecting: false,
-        smartAccountAddress: address,
+        address: eoaAddress,
+        smartAccountAddress: smartAccountAddress || eoaAddress,
         chainId: 10143,
+      });
+
+      toast({
+        title: "Wallet Connected!",
+        description: `Connected to ${eoaAddress.slice(0, 6)}...${eoaAddress.slice(-4)} on Monad Testnet.${smartAccountAddress ? "\nSmart Account created!" : ""}`,
+        duration: 5000,
       });
     } catch (error) {
       let errorMessage = "Failed to connect wallet";
@@ -127,12 +138,21 @@ export default function Game() {
     setTransactionData({ status: "pending" });
 
     try {
-      const txHash = await saveScoreToBlockchain(score);
+      const result = await saveScoreToBlockchain(score);
       setTransactionData({
         status: "success",
-        hash: txHash,
-        explorerUrl: getExplorerUrl(txHash),
+        hash: result.hash,
+        explorerUrl: getExplorerUrl(result.hash),
+        method: result.method,
       });
+
+      if (result.method === "eoa") {
+        toast({
+          title: "Fallback Used",
+          description: "Score saved via EOA wallet (Smart Account timed out)",
+          variant: "default",
+        });
+      }
     } catch (error: any) {
       let errorMessage = "Failed to save score on-chain";
       let isUserRejection = false;
@@ -142,10 +162,15 @@ export default function Game() {
         isUserRejection = true;
       } else if (error?.name === "InsufficientFundsError" || error?.message?.includes("INSUFFICIENT_FUNDS")) {
         const address = error.message.split(":")[1] || walletState.smartAccountAddress;
-        errorMessage = `Your Smart Account needs MON tokens to pay for gas fees.\n\nSmart Account: ${address}\n\nPlease send some MON tokens from your MetaMask wallet to this Smart Account address, then try again.\n\nYou can get free testnet MON from the Monad faucet.`;
-      } else if (error?.name === "TransactionPendingError" || error?.message?.includes("PENDING:")) {
-        const userOpHash = error.message.split(":")[1];
-        errorMessage = `Transaction is taking longer than expected to confirm.\n\nUser Operation Hash: ${userOpHash}\n\nThis might be due to network congestion on Monad testnet. The transaction may still complete - please wait a few minutes and check the Monad Explorer.\n\nTip: For faster transactions, consider using regular wallet transactions instead of Smart Accounts.`;
+        setShowTransactionModal(false);
+        setTransactionData({ status: "idle" });
+        toast({
+          title: "Insufficient Funds",
+          description: `Your wallet needs MON tokens to pay gas fees. Address: ${address}`,
+          variant: "destructive",
+          duration: 10000,
+        });
+        return;
       } else if (error?.message?.includes("Contract not deployed")) {
         errorMessage = "Smart contract not deployed. Please deploy the contract first and set VITE_CONTRACT_ADDRESS in .env file.";
       } else if (error?.message?.includes("Lower score")) {
@@ -154,6 +179,7 @@ export default function Game() {
 
       if (isUserRejection) {
         setShowTransactionModal(false);
+        setTransactionData({ status: "idle" });
         toast({
           title: "Transaction Cancelled",
           description: errorMessage,
@@ -191,8 +217,19 @@ export default function Game() {
         isConnected={walletState.isConnected}
         isConnecting={walletState.isConnecting}
         smartAccountAddress={walletState.smartAccountAddress}
+        eoaAddress={walletState.address}
         onConnect={handleConnectWallet}
       />
+
+      {/* Envio HyperSync - Wallet Balance Display */}
+      {walletState.isConnected && walletState.smartAccountAddress && (
+        <div className="fixed bottom-32 left-8 z-40 w-80">
+          <WalletBalanceCard 
+            address={walletState.smartAccountAddress as Address} 
+            label="Wallet"
+          />
+        </div>
+      )}
 
       <Toaster />
 
@@ -215,6 +252,7 @@ export default function Game() {
         hash={transactionData.hash}
         error={transactionData.error}
         explorerUrl={transactionData.explorerUrl}
+        method={transactionData.method}
         onClose={() => setShowTransactionModal(false)}
       />
 

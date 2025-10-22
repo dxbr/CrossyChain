@@ -4,7 +4,7 @@
 
 1. **MetaMask Browser Extension** installed
 2. **Monad Testnet MON tokens** from faucet
-3. **Pimlico API Key** for ERC-4337 bundler (free for testnet)
+3. **Alchemy API Key** for ERC-4337 bundler (free for testnet)
 
 ## Step 1: Get Monad Testnet MON Tokens
 
@@ -13,13 +13,13 @@ Visit one of these faucets to get free testnet MON:
 - **QuickNode Faucet**: https://faucet.quicknode.com/monad/testnet
 - **Alchemy Faucet**: https://www.alchemy.com/faucets/monad-testnet
 
-## Step 2: Get Pimlico API Key (Required for Smart Accounts)
+## Step 2: Get Alchemy API Key (Required for Smart Accounts)
 
-MetaMask Smart Accounts require an ERC-4337 bundler to submit user operations. We use Pimlico's free bundler service.
+MetaMask Smart Accounts require an ERC-4337 bundler to submit user operations. We use Alchemy's bundler service.
 
-1. Visit **https://dashboard.pimlico.io/**
+1. Visit **https://dashboard.alchemy.com/**
 2. Sign up for a free account
-3. Create a new API key
+3. Create a new app for Monad Testnet
 4. Copy your API key
 
 ## Step 3: Deploy ScoreStore Smart Contract
@@ -46,8 +46,11 @@ Create a `.env` file in the project root with:
 # Smart Contract Address (from Step 3)
 VITE_CONTRACT_ADDRESS=0xYourContractAddressHere
 
-# Pimlico API Key (from Step 2)
-VITE_PIMLICO_API_KEY=your_pimlico_api_key_here
+# Alchemy API Key (from Step 2)
+VITE_ALCHEMY_API_KEY=your_alchemy_api_key_here
+
+# Monad RPC URL (optional, defaults to Ankr)
+MONAD_RPC=https://rpc.ankr.com/monad_testnet
 ```
 
 ## Step 5: Run the Application
@@ -92,7 +95,7 @@ The app will be available at http://localhost:5000
 
 3. **Set environment variables** in Netlify:
    - `VITE_CONTRACT_ADDRESS`
-   - `VITE_PIMLICO_API_KEY`
+   - `VITE_ALCHEMY_API_KEY`
 
 ## Troubleshooting
 
@@ -101,8 +104,8 @@ The app will be available at http://localhost:5000
 - Refresh the page and try connecting again
 
 ### "User operations may fail" warning in console
-- Your `VITE_PIMLICO_API_KEY` is not set
-- Get a free API key from https://dashboard.pimlico.io
+- Your `VITE_ALCHEMY_API_KEY` is not set
+- Get a free API key from https://dashboard.alchemy.com
 
 ### "Contract not deployed" error
 - Deploy the ScoreStore contract to Monad testnet (see Step 3)
@@ -119,12 +122,12 @@ The app will be available at http://localhost:5000
 ✅ **Deployed on Monad testnet** - Chain ID: 10143  
 ✅ **Integration in main flow** - Score submission uses Smart Accounts  
 ✅ **Signer agnostic** - Works with MetaMask extension  
-✅ **ERC-4337 compliant** - User operations via Pimlico bundler  
+✅ **ERC-4337 compliant** - User operations via Alchemy bundler  
 
 ## Resources
 
 - **Monad Testnet Hub**: https://testnet.monad.xyz
 - **Monad Explorer**: https://testnet.monadexplorer.com
-- **Pimlico Docs**: https://docs.pimlico.io
+- **Alchemy Docs**: https://docs.alchemy.com
 - **MetaMask Delegation Toolkit**: https://docs.metamask.io/delegation-toolkit/
 - **Project Documentation**: See `replit.md` for technical details

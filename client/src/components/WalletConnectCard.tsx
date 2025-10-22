@@ -1,12 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Wallet, Copy, Check } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { publicClient } from "@/lib/web3";
+import type { Address } from "viem";
 
 interface WalletConnectCardProps {
   isConnected: boolean;
   isConnecting: boolean;
   smartAccountAddress?: string;
+  eoaAddress?: string;
   onConnect: () => void;
 }
 
@@ -14,9 +17,24 @@ export function WalletConnectCard({
   isConnected,
   isConnecting,
   smartAccountAddress,
+  eoaAddress,
   onConnect,
 }: WalletConnectCardProps) {
   const [copied, setCopied] = useState(false);
+  const [balance, setBalance] = useState<string>("0");
+
+  useEffect(() => {
+    if (smartAccountAddress && isConnected) {
+      const fetchBalance = async () => {
+        const bal = await publicClient.getBalance({ address: smartAccountAddress as Address });
+        const monBalance = Number(bal) / 1e18;
+        setBalance(monBalance.toFixed(4));
+      };
+      fetchBalance();
+      const interval = setInterval(fetchBalance, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [smartAccountAddress, isConnected]);
 
   const truncateAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -54,8 +72,20 @@ export function WalletConnectCard({
           </div>
           {smartAccountAddress && (
             <>
+              {eoaAddress && smartAccountAddress !== eoaAddress && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-mono text-muted-foreground">EOA Address:</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono text-foreground" data-testid="text-eoa-address">
+                      {truncateAddress(eoaAddress)}
+                    </span>
+                  </div>
+                </div>
+              )}
               <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-mono text-muted-foreground">Smart Account:</span>
+                <span className="text-[10px] font-mono text-muted-foreground">
+                  {eoaAddress && smartAccountAddress !== eoaAddress ? "Smart Account:" : "Wallet Address:"}
+                </span>
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-mono text-foreground" data-testid="text-wallet-address">
                     {truncateAddress(smartAccountAddress)}
@@ -75,8 +105,11 @@ export function WalletConnectCard({
                   </Button>
                 </div>
               </div>
-              <div className="text-[9px] text-muted-foreground max-w-[200px] leading-tight">
-                This Smart Account needs MON tokens to pay gas fees
+              <div className="flex flex-col gap-1">
+                <span className="text-[10px] font-mono text-muted-foreground">Balance:</span>
+                <span className="text-xs font-mono text-foreground" data-testid="text-wallet-balance">
+                  {balance} MON
+                </span>
               </div>
             </>
           )}

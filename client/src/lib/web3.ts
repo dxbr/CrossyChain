@@ -3,16 +3,10 @@ import {
   createWalletClient, 
   custom, 
   http, 
-  type Address,
-  parseAbi,
-  encodeFunctionData
+  type Address
 } from "viem";
-import { createBundlerClient, type UserOperation } from "viem/account-abstraction";
-import { 
-  Implementation, 
-  toMetaMaskSmartAccount,
-  type MetaMaskSmartAccount
-} from "@metamask/delegation-toolkit";
+import { toMetaMaskSmartAccount, Implementation } from "@metamask/delegation-toolkit";
+import { createBundlerClient } from "viem/account-abstraction";
 
 export const MONAD_TESTNET = {
   id: 10143,
@@ -38,7 +32,7 @@ export const MONAD_TESTNET = {
   },
 } as const;
 
-export const CONTRACT_ADDRESS = (import.meta.env.VITE_CONTRACT_ADDRESS || "0x0000000000000000000000000000000000000000") as Address;
+export const CONTRACT_ADDRESS = (import.meta.env.VITE_CONTRACT_ADDRESS || "0x8c2b26d35c3c749ff1f4dc91c36a81b304ce36ee") as Address;
 
 export const SCORE_STORE_ABI = [
   {
@@ -73,15 +67,19 @@ export const SCORE_STORE_ABI = [
   },
 ] as const;
 
-const MONAD_RPC_URL = "https://testnet-rpc.monad.xyz";
+const MONAD_RPC_URL = import.meta.env.MONAD_RPC || "https://rpc.ankr.com/monad_testnet";
+const ALCHEMY_API_KEY = import.meta.env.VITE_ALCHEMY_API_KEY || "";
+const BUNDLER_URL = `https://monad-testnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
 
 export const publicClient = createPublicClient({
   chain: MONAD_TESTNET,
   transport: http(MONAD_RPC_URL),
 });
 
+let currentEOAWalletClient: any = null;
+let currentEOAAddress: Address | null = null;
 let currentSmartAccount: any = null;
-let currentBundlerClient: any = null;
+let currentSmartAccountAddress: Address | null = null;
 
 export async function connectWallet(): Promise<Address> {
   if (typeof window.ethereum === "undefined") {
@@ -127,6 +125,7 @@ export async function connectWallet(): Promise<Address> {
   }
 
   const eoaAddress = accounts[0];
+  currentEOAAddress = eoaAddress;
 
   const walletClient = createWalletClient({
     account: eoaAddress,
@@ -134,10 +133,13 @@ export async function connectWallet(): Promise<Address> {
     transport: custom(window.ethereum),
   });
 
-  console.log("Creating MetaMask Smart Account for EOA:", eoaAddress);
+  currentEOAWalletClient = walletClient;
+
+  console.log("Connected EOA wallet:", eoaAddress);
 
   try {
-    currentSmartAccount = await toMetaMaskSmartAccount({
+    console.log("Creating MetaMask Smart Account...");
+    const smartAccount = await toMetaMaskSmartAccount({
       client: publicClient,
       implementation: Implementation.Hybrid,
       deployParams: [eoaAddress, [], [], []],
@@ -145,49 +147,117 @@ export async function connectWallet(): Promise<Address> {
       signer: { walletClient },
     });
 
-    const pimlicoApiKey = import.meta.env.VITE_PIMLICO_API_KEY;
-    
-    if (!pimlicoApiKey) {
-      throw new Error("VITE_PIMLICO_API_KEY is required for Smart Account transactions. Please set it in your environment variables.");
-    }
-
-    const bundlerUrl = `https://api.pimlico.io/v2/10143/rpc?apikey=${pimlicoApiKey}`;
-    console.log("Using Pimlico bundler for Smart Accounts on Monad testnet");
-
-    currentBundlerClient = createBundlerClient({
-      client: publicClient,
-      transport: http(bundlerUrl),
-    });
-
-    console.log("Smart Account created:", currentSmartAccount.address);
-    console.log("Smart Account is deployed:", await isSmartAccountDeployed(currentSmartAccount.address));
-
-    return currentSmartAccount.address;
+    currentSmartAccount = smartAccount;
+    currentSmartAccountAddress = smartAccount.address;
+    console.log("Smart Account address:", currentSmartAccountAddress);
   } catch (error) {
-    console.error("Failed to create smart account:", error);
-    throw new Error("Failed to create MetaMask Smart Account. Please try again.");
+    console.error("Failed to create Smart Account (will use EOA fallback):", error);
+    currentSmartAccount = null;
+    currentSmartAccountAddress = null;
   }
+
+  return eoaAddress;
 }
 
-export async function isSmartAccountDeployed(address: Address): Promise<boolean> {
-  try {
-    const code = await publicClient.getBytecode({ address });
-    return code !== undefined && code !== "0x";
-  } catch {
-    return false;
-  }
+export function getCurrentSmartAccountAddress(): Address | null {
+  return currentSmartAccountAddress;
 }
 
-export async function getSmartAccountBalance(address: Address): Promise<bigint> {
-  try {
-    const balance = await publicClient.getBalance({ address });
-    return balance;
-  } catch {
-    return BigInt(0);
-  }
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      const error = new Error(timeoutMessage);
+      error.name = "TimeoutError";
+      reject(error);
+    }, timeoutMs);
+
+    promise
+      .then((result) => {
+        clearTimeout(timer);
+        resolve(result);
+      })
+      .catch((error) => {
+        clearTimeout(timer);
+        reject(error);
+      });
+  });
 }
 
-export async function saveScoreToBlockchain(score: number): Promise<string> {
+async function saveScoreViaSmartAccount(score: number): Promise<{ hash: string; method: "smartAccount" }> {
+  if (!currentSmartAccount) {
+    throw new Error("Smart Account not initialized");
+  }
+
+  console.log("Attempting Smart Account transaction via bundler...");
+  console.log("Smart Account Address:", currentSmartAccountAddress);
+  console.log("Score:", score);
+
+  const bundlerClient = createBundlerClient({
+    client: publicClient,
+    transport: http(BUNDLER_URL),
+  });
+
+  const userOpHash = await bundlerClient.sendUserOperation({
+    account: currentSmartAccount,
+    calls: [
+      {
+        to: CONTRACT_ADDRESS,
+        abi: SCORE_STORE_ABI,
+        functionName: "saveScore",
+        args: [BigInt(score)],
+      },
+    ],
+  });
+
+  console.log("User Operation Hash:", userOpHash);
+  console.log("Waiting for transaction receipt...");
+
+  const receipt = await withTimeout(
+    bundlerClient.waitForUserOperationReceipt({
+      hash: userOpHash,
+    }),
+    30000,
+    "Smart Account transaction timed out after 30 seconds"
+  );
+
+  const txHash = receipt.receipt.transactionHash;
+  console.log("Smart Account transaction successful! Hash:", txHash);
+
+  return { hash: txHash, method: "smartAccount" };
+}
+
+async function saveScoreViaEOA(score: number): Promise<{ hash: string; method: "eoa" }> {
+  if (!currentEOAWalletClient || !currentEOAAddress) {
+    throw new Error("EOA wallet not connected");
+  }
+
+  console.log("Submitting score via EOA wallet:", currentEOAAddress);
+  console.log("Score:", score);
+
+  const balance = await publicClient.getBalance({ address: currentEOAAddress });
+  console.log("EOA wallet balance:", balance.toString(), "wei");
+
+  if (balance === BigInt(0)) {
+    const fundError = new Error(`INSUFFICIENT_FUNDS:${currentEOAAddress}`);
+    fundError.name = "InsufficientFundsError";
+    throw fundError;
+  }
+
+  console.log("Sending transaction from EOA wallet...");
+  
+  const txHash = await currentEOAWalletClient.writeContract({
+    address: CONTRACT_ADDRESS,
+    abi: SCORE_STORE_ABI,
+    functionName: "saveScore",
+    args: [BigInt(score)],
+  });
+
+  console.log("EOA transaction successful! Hash:", txHash);
+
+  return { hash: txHash, method: "eoa" };
+}
+
+export async function saveScoreToBlockchain(score: number): Promise<{ hash: string; method: "smartAccount" | "eoa" }> {
   if (typeof window.ethereum === "undefined") {
     throw new Error("MetaMask not installed");
   }
@@ -196,66 +266,33 @@ export async function saveScoreToBlockchain(score: number): Promise<string> {
     throw new Error("Contract not deployed. Please deploy the ScoreStore contract and set VITE_CONTRACT_ADDRESS environment variable.");
   }
 
-  if (!currentSmartAccount || !currentBundlerClient) {
-    throw new Error("Smart Account not initialized. Please connect wallet first.");
+  if (!currentEOAWalletClient || !currentEOAAddress) {
+    throw new Error("Wallet not connected. Please connect your wallet first.");
   }
 
   try {
-    console.log("Submitting score via Smart Account:", currentSmartAccount.address);
-    console.log("Score:", score);
+    if (currentSmartAccount && ALCHEMY_API_KEY) {
+      try {
+        return await saveScoreViaSmartAccount(score);
+      } catch (smartAccountError: any) {
+        console.warn("Smart Account transaction failed:", smartAccountError);
 
-    const balance = await getSmartAccountBalance(currentSmartAccount.address);
-    console.log("Smart Account balance:", balance.toString(), "wei");
+        if (smartAccountError?.code === 4001 || smartAccountError?.message?.includes("User rejected")) {
+          console.log("User rejected Smart Account transaction");
+          throw smartAccountError;
+        }
 
-    const callData = encodeFunctionData({
-      abi: SCORE_STORE_ABI,
-      functionName: "saveScore",
-      args: [BigInt(score)],
-    });
+        if (smartAccountError?.name === "InsufficientFundsError" || smartAccountError?.message?.includes("INSUFFICIENT_FUNDS")) {
+          console.log("Insufficient funds in Smart Account");
+          throw smartAccountError;
+        }
 
-    const isDeployed = await isSmartAccountDeployed(currentSmartAccount.address);
-    
-    if (!isDeployed) {
-      console.log("Smart Account not deployed yet, will deploy with first transaction");
-    }
-
-    const gasPrice = await publicClient.getGasPrice();
-    const maxFeePerGas = gasPrice * BigInt(2);
-    const maxPriorityFeePerGas = gasPrice / BigInt(2);
-
-    console.log("Sending user operation...");
-    const userOperationHash = await currentBundlerClient.sendUserOperation({
-      account: currentSmartAccount,
-      calls: [
-        {
-          to: CONTRACT_ADDRESS,
-          data: callData,
-          value: BigInt(0),
-        },
-      ],
-      maxFeePerGas,
-      maxPriorityFeePerGas,
-    });
-
-    console.log("User operation hash:", userOperationHash);
-
-    console.log("Waiting for transaction receipt...");
-    try {
-      const receipt = await currentBundlerClient.waitForUserOperationReceipt({
-        hash: userOperationHash,
-        timeout: 300_000,
-      });
-
-      console.log("Transaction confirmed:", receipt.receipt.transactionHash);
-      return receipt.receipt.transactionHash;
-    } catch (timeoutError: any) {
-      if (timeoutError?.name === "WaitForUserOperationReceiptTimeoutError") {
-        console.warn("Transaction timed out, but may still be processing");
-        const pendingError = new Error(`PENDING:${userOperationHash}`);
-        pendingError.name = "TransactionPendingError";
-        throw pendingError;
+        console.log("Falling back to EOA wallet...");
+        return await saveScoreViaEOA(score);
       }
-      throw timeoutError;
+    } else {
+      console.log("Smart Account not available, using EOA wallet");
+      return await saveScoreViaEOA(score);
     }
   } catch (error: any) {
     console.error("Error saving score:", error);
@@ -270,8 +307,8 @@ export async function saveScoreToBlockchain(score: number): Promise<string> {
       throw error;
     }
     
-    if (error?.message?.includes("didn't pay prefund") || error?.message?.includes("AA21") || error?.message?.includes("insufficient funds")) {
-      const fundError = new Error(`INSUFFICIENT_FUNDS:${currentSmartAccount.address}`);
+    if (error?.message?.includes("insufficient funds") || error?.message?.includes("exceeds balance")) {
+      const fundError = new Error(`INSUFFICIENT_FUNDS:${currentEOAAddress}`);
       fundError.name = "InsufficientFundsError";
       throw fundError;
     }

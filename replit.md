@@ -31,13 +31,14 @@ Crossy Chain is a Web3-enabled 3D game built with Three.js, React, and TypeScrip
 ## Key Features
 
 1. **MetaMask Smart Account Integration**: Connect MetaMask extension to automatically create a Smart Account using Delegation Toolkit
-2. **ERC-4337 User Operations**: Score submissions via bundler using account abstraction
-3. **3D Gameplay**: Retro-style Crossy Road clone with Three.js rendering
-4. **On-Chain Scores**: Permanent high score storage on Monad blockchain via user operations
-5. **Automatic Smart Account Deployment**: First transaction deploys the smart account automatically
-6. **Block Explorer Links**: View transaction receipts on Monad Explorer
-7. **Responsive UI**: Pixel-art aesthetic with mobile controls
-8. **Hackathon Compliant**: Meets all MetaMask Smart Accounts x Monad requirements
+2. **Smart Transaction Fallback System**: Automatically tries Smart Account transactions first, falls back to EOA wallet if timeout/failure occurs
+3. **ERC-4337 User Operations**: Score submissions via bundler using account abstraction
+4. **3D Gameplay**: Retro-style Crossy Road clone with Three.js rendering
+5. **On-Chain Scores**: Permanent high score storage on Monad blockchain via user operations
+6. **Automatic Smart Account Deployment**: First transaction deploys the smart account automatically
+7. **Block Explorer Links**: View transaction receipts on Monad Explorer
+8. **Responsive UI**: Pixel-art aesthetic with mobile controls showing both EOA and Smart Account addresses
+9. **Hackathon Compliant**: Meets all MetaMask Smart Accounts x Monad requirements
 
 ## Project Structure
 
@@ -105,10 +106,11 @@ The application follows a retro arcade aesthetic:
 ## Network Details
 
 - **Network**: Monad Testnet
-- **RPC**: https://testnet-rpc.monad.xyz/
+- **RPC**: https://rpc.ankr.com/monad_testnet
 - **Chain ID**: 10143 (0x279f)
 - **Explorer**: https://testnet.monadexplorer.com/
 - **Currency**: MON (testnet)
+- **Bundler**: Alchemy (https://monad-testnet.g.alchemy.com)
 
 ## Running the Project
 
@@ -130,11 +132,22 @@ npx hardhat run web3/scripts/deploy.js --network monad
 3. **Play Game**: Use arrow keys or on-screen buttons to move chicken across lanes
 4. **Earn Score**: Cross lanes to increase score, avoid vehicles
 5. **Game Over**: Get hit by vehicle → click "Submit Score On-Chain"
-6. **User Operation**: Score is submitted via bundler as a user operation (ERC-4337)
-7. **Auto-Deploy**: If smart account not deployed, it deploys automatically with first transaction
-8. **View Transaction**: Check Monad Explorer for transaction receipt confirmation
+6. **Smart Transaction**: System first attempts Smart Account transaction via Alchemy bundler (30-second timeout)
+7. **Automatic Fallback**: If Smart Account times out/fails, automatically retries with EOA wallet
+8. **Auto-Deploy**: If smart account not deployed, it deploys automatically with first transaction
+9. **View Transaction**: Check Monad Explorer for transaction receipt - modal shows which method was used (Smart Account or EOA)
 
 ## Recent Changes
+
+- **2025-10-22 (Latest)**: **Smart Account Fallback System Implementation**
+  - Implemented automatic fallback from Smart Account to EOA wallet for score submissions
+  - Added 30-second timeout for Smart Account transactions
+  - Created transaction orchestrator that tries Smart Account first, falls back to EOA on timeout/error
+  - Enhanced UI to show which transaction method was used (Smart Account vs EOA badge in modal)
+  - Updated WalletConnectCard to display both EOA and Smart Account addresses
+  - Added toast notification when fallback to EOA occurs
+  - Updated schema to track transaction method (`smartAccount` or `eoa`)
+  - Proper error classification: user rejection and insufficient funds skip fallback
 
 - **2025-10-22**: **MetaMask Smart Accounts Integration Complete**
   - Integrated @metamask/delegation-toolkit SDK
@@ -152,24 +165,32 @@ npx hardhat run web3/scripts/deploy.js --network monad
 
 ### MetaMask Smart Accounts Integration
 
-This project uses the **MetaMask Delegation Toolkit SDK** to implement ERC-4337 account abstraction:
+This project uses the **MetaMask Delegation Toolkit SDK** to implement ERC-4337 account abstraction with an **automatic fallback system**:
 
 **Key Components:**
 - `toMetaMaskSmartAccount()`: Creates a Hybrid smart account linked to user's EOA
 - `createBundlerClient()`: Viem bundler client for submitting user operations
-- `sendUserOperation()`: Submits transactions via bundler instead of direct RPC
+- `saveScoreViaSmartAccount()`: Submits transactions via bundler with 30-second timeout
+- `saveScoreViaEOA()`: Fallback method using direct EOA wallet transactions
+- `saveScoreToBlockchain()`: Orchestrator that tries Smart Account first, then EOA
+- `withTimeout()`: Promise wrapper that enforces timeout on bundler operations
 
-**Flow:**
+**Transaction Flow (with Fallback):**
 1. User connects MetaMask extension (EOA)
 2. System creates a Smart Account with the EOA as signer
-3. Smart Account address is displayed in UI
-4. Game scores are submitted via user operations, not regular transactions
-5. Bundler handles transaction processing and smart account deployment
+3. Both EOA and Smart Account addresses are displayed in UI
+4. On score submission, system attempts Smart Account transaction via bundler
+5. If Smart Account succeeds → transaction completes (method: "smartAccount")
+6. If Smart Account times out or fails → automatically retries with EOA wallet (method: "eoa")
+7. User rejection or insufficient funds skip fallback and show error immediately
+8. Transaction modal displays badge showing which method was used
 
 **Benefits:**
-- **Improved UX**: Users interact with a smart contract account
-- **Account Abstraction**: ERC-4337 compliant
+- **Reliability**: Automatic fallback ensures scores are always saved
+- **Improved UX**: Users get best-effort Smart Account with EOA backup
+- **Account Abstraction**: ERC-4337 compliant when Smart Account succeeds
 - **Automatic Deployment**: Smart account deploys on first use
+- **Transparency**: UI clearly shows which transaction method succeeded
 - **Future Ready**: Enables gasless transactions with paymaster integration
 
 ### Hackathon Compliance
@@ -185,7 +206,8 @@ This project uses the **MetaMask Delegation Toolkit SDK** to implement ERC-4337 
 - **Netlify Configuration**: `netlify.toml` + `client/public/_redirects` for SPA routing
 - **Required Environment Variables**:
   - `VITE_CONTRACT_ADDRESS`: ScoreStore.sol contract address on Monad testnet
-  - `VITE_PIMLICO_API_KEY`: Free API key from https://dashboard.pimlico.io (required for bundler)
+  - `VITE_ALCHEMY_API_KEY`: Free API key from https://dashboard.alchemy.com (required for bundler)
+  - `MONAD_RPC`: Monad RPC URL (defaults to https://rpc.ankr.com/monad_testnet)
 - **Smart Contract**: Deploy to Monad testnet using Hardhat with deployer private key
 - **Gas Costs**: User pays gas for user operations (paymaster integration optional)
 - **Setup Guide**: See `SETUP.md` for complete setup instructions
