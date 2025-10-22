@@ -1,4 +1,4 @@
-# Crossy Chain
+# Crossy Road
 
 A blockchain-enabled 3D game where players navigate a chicken across lanes of traffic and their high scores are permanently recorded on the Monad blockchain using MetaMask Smart Accounts.
 
