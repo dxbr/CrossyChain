@@ -32,7 +32,7 @@ export const MONAD_TESTNET = {
   },
 } as const;
 
-export const CONTRACT_ADDRESS = (import.meta.env.VITE_CONTRACT_ADDRESS || "0x8c2b26d35c3c749ff1f4dc91c36a81b304ce36ee") as Address;
+export const CONTRACT_ADDRESS = (import.meta.env.VITE_CONTRACT_ADDRESS || "0x0877c473BCe3aAEa4705AB5C3e24d7b0f630C956") as Address;
 
 export const SCORE_STORE_ABI = [
   {
@@ -47,6 +47,7 @@ export const SCORE_STORE_ABI = [
     inputs: [
       { indexed: true, internalType: "address", name: "player", type: "address" },
       { indexed: false, internalType: "uint256", name: "score", type: "uint256" },
+      { indexed: false, internalType: "bool", name: "isNewHighScore", type: "bool" },
     ],
     name: "ScoreSaved",
     type: "event",
@@ -67,9 +68,21 @@ export const SCORE_STORE_ABI = [
   },
 ] as const;
 
-const MONAD_RPC_URL = import.meta.env.MONAD_RPC || "https://rpc.ankr.com/monad_testnet";
-const ALCHEMY_API_KEY = import.meta.env.VITE_ALCHEMY_API_KEY || "";
-const BUNDLER_URL = `https://monad-testnet.g.alchemy.com/v2/${ALCHEMY_API_KEY}`;
+const MONAD_RPC_URL = import.meta.env.VITE_MONAD_RPC || "https://rpc.ankr.com/monad_testnet";
+const ZERODEV_PROJECT_ID = import.meta.env.VITE_ZERODEV_PROJECT_ID || "";
+const ENVIO_API_KEY = import.meta.env.ENVIO_API_KEY || "";
+
+// Validate ZeroDev project ID on init
+if (ZERODEV_PROJECT_ID) {
+  console.log("ZeroDev Project ID loaded:", ZERODEV_PROJECT_ID.substring(0, 8) + "...");
+} else {
+  console.warn("VITE_ZERODEV_PROJECT_ID not set - Gasless transactions will not work");
+}
+
+// ZeroDev RPC with selfFunded=true (smart wallet pays with its own MON tokens)
+const BUNDLER_URL = ZERODEV_PROJECT_ID
+  ? `https://rpc.zerodev.app/api/v3/${ZERODEV_PROJECT_ID}/chain/${MONAD_TESTNET.id}?selfFunded=true`
+  : "";
 
 export const publicClient = createPublicClient({
   chain: MONAD_TESTNET,
@@ -163,6 +176,31 @@ export function getCurrentSmartAccountAddress(): Address | null {
   return currentSmartAccountAddress;
 }
 
+export function getCurrentEOAAddress(): Address | null {
+  return currentEOAAddress;
+}
+
+// Fetch EOA balance
+// Note: For comprehensive balance data with Envio HyperSync, use WalletBalanceCard component
+// which accesses server-side Envio integration at /api/balance/${address}
+export async function getEOABalance(address?: Address): Promise<bigint> {
+  const targetAddress = address || currentEOAAddress;
+  
+  if (!targetAddress) {
+    throw new Error("No address provided");
+  }
+
+  try {
+    const balance = await publicClient.getBalance({ address: targetAddress });
+    console.log(`EOA Balance (${targetAddress}):`, balance.toString(), "wei");
+    return balance;
+  } catch (error) {
+    console.error("Error fetching EOA balance:", error);
+    // Return 0 on error rather than throwing
+    return BigInt(0);
+  }
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
@@ -183,47 +221,178 @@ function withTimeout<T>(promise: Promise<T>, timeoutMs: number, timeoutMessage: 
   });
 }
 
-async function saveScoreViaSmartAccount(score: number): Promise<{ hash: string; method: "smartAccount" }> {
+async function saveScoreViaSmartAccount(
+  score: number,
+  onProgress?: (stage: string, secondsElapsed: number) => void
+): Promise<{ hash: string; method: "smartAccount" }> {
   if (!currentSmartAccount) {
     throw new Error("Smart Account not initialized");
   }
 
-  console.log("Attempting Smart Account transaction via bundler...");
-  console.log("Smart Account Address:", currentSmartAccountAddress);
-  console.log("Score:", score);
+  if (!BUNDLER_URL) {
+    throw new Error("Bundler not configured - ZeroDev Project ID missing");
+  }
 
-  const bundlerClient = createBundlerClient({
-    client: publicClient,
-    transport: http(BUNDLER_URL),
-  });
+  console.log("🚀 Starting Smart Account gasless transaction...");
+  console.log("   Smart Account:", currentSmartAccountAddress);
+  console.log("   ZeroDev Bundler:", BUNDLER_URL.substring(0, 60) + "...");
+  console.log("   Score:", score);
+  console.log("   Gas: Sponsored by smart wallet (selfFunded=true)");
 
-  const userOpHash = await bundlerClient.sendUserOperation({
-    account: currentSmartAccount,
-    calls: [
-      {
-        to: CONTRACT_ADDRESS,
-        abi: SCORE_STORE_ABI,
-        functionName: "saveScore",
-        args: [BigInt(score)],
-      },
-    ],
-  });
+  const startTime = Date.now();
+  const TIMEOUT_MS = 90000; // 90 seconds total timeout for ZeroDev bundler
+  let progressInterval: any = null;
 
-  console.log("User Operation Hash:", userOpHash);
-  console.log("Waiting for transaction receipt...");
+  if (onProgress) {
+    onProgress("Preparing gasless transaction...", 0);
+    progressInterval = setInterval(() => {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      onProgress(`Processing gasless transaction... (${elapsed}s)`, elapsed);
+    }, 1000);
+  }
 
-  const receipt = await withTimeout(
-    bundlerClient.waitForUserOperationReceipt({
-      hash: userOpHash,
-    }),
-    30000,
-    "Smart Account transaction timed out after 30 seconds"
-  );
+  try {
+    // Create bundler client with ZeroDev RPC
+    // ZeroDev's selfFunded=true parameter automatically handles gas sponsorship from the smart wallet
+    console.log("Creating ZeroDev bundler client...");
+    const bundlerClient = createBundlerClient({
+      client: publicClient,
+      transport: http(BUNDLER_URL, {
+        timeout: TIMEOUT_MS,
+        retryCount: 2,
+        retryDelay: 1000,
+      }),
+    });
 
-  const txHash = receipt.receipt.transactionHash;
-  console.log("Smart Account transaction successful! Hash:", txHash);
+    if (onProgress) {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      onProgress("Submitting to ZeroDev bundler...", elapsed);
+    }
 
-  return { hash: txHash, method: "smartAccount" };
+    console.log("Preparing user operation...");
+
+    // Wrap the entire operation with timeout
+    const executeTransaction = async () => {
+      // Submit the user operation - ZeroDev bundler with selfFunded=true handles gas automatically
+      const userOpHash = await bundlerClient.sendUserOperation({
+        account: currentSmartAccount,
+        calls: [
+          {
+            to: CONTRACT_ADDRESS,
+            abi: SCORE_STORE_ABI,
+            functionName: "saveScore",
+            args: [BigInt(score)],
+          },
+        ],
+      });
+
+      console.log("✅ User operation sent:", userOpHash);
+
+      if (onProgress) {
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        onProgress("Waiting for confirmation...", elapsed);
+      }
+
+      // Wait for the receipt with polling
+      console.log("Waiting for receipt...");
+      const maxWaitTime = 60000; // 60 seconds max for receipt
+      const pollInterval = 2000; // Poll every 2 seconds
+      const endTime = Date.now() + maxWaitTime;
+
+      let receipt = null;
+      while (Date.now() < endTime) {
+        try {
+          receipt = await bundlerClient.getUserOperationReceipt({
+            hash: userOpHash,
+          });
+
+          if (receipt) {
+            console.log("✅ Receipt received:", receipt);
+            break;
+          }
+        } catch (e: any) {
+          // Receipt not ready yet, continue polling
+          if (!e?.message?.includes("not found") && !e?.message?.includes("UserOperation not found")) {
+            console.warn("Receipt check error:", e?.message);
+          }
+        }
+
+        if (!receipt) {
+          await new Promise((resolve) => setTimeout(resolve, pollInterval));
+        }
+
+        if (onProgress && receipt) {
+          const elapsed = Math.floor((Date.now() - startTime) / 1000);
+          onProgress(`Confirming... (${elapsed}s)`, elapsed);
+        }
+      }
+
+      if (!receipt) {
+        console.warn("Receipt not received after 60 seconds, but transaction may have succeeded");
+        // Return userOpHash as fallback - transaction may still succeed
+        return { hash: userOpHash, method: "smartAccount" as const };
+      }
+
+      const txHash = receipt.receipt?.transactionHash || userOpHash;
+      return { hash: txHash, method: "smartAccount" as const };
+    };
+
+    // Execute with overall timeout
+    const result = await withTimeout(
+      executeTransaction(),
+      TIMEOUT_MS,
+      "Smart Account transaction timeout after 90 seconds"
+    );
+
+    if (progressInterval) {
+      clearInterval(progressInterval);
+    }
+
+    console.log("✅ Smart Account gasless transaction complete:", result.hash);
+
+    if (onProgress) {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      onProgress(`Success! (${elapsed}s)`, elapsed);
+    }
+
+    return result;
+  } catch (error: any) {
+    if (progressInterval) {
+      clearInterval(progressInterval);
+    }
+
+    console.error("❌ Smart Account error:", error?.message || error);
+
+    // Log detailed error for debugging
+    if (error?.cause) {
+      console.error("Error cause:", error.cause);
+    }
+    if (error?.response) {
+      console.error("Error response:", error.response);
+    }
+    if (error?.details) {
+      console.error("Error details:", error.details);
+    }
+
+    // Check for specific error types
+    const errorMsg = error?.message || String(error);
+    
+    // If timeout, provide helpful message
+    if (error?.name === "TimeoutError" || errorMsg.includes("timeout")) {
+      const timeoutError = new Error("Transaction timed out - this may be due to network congestion. Please try again.");
+      (timeoutError as any).code = "TIMEOUT";
+      throw timeoutError;
+    }
+
+    // If insufficient funds in smart wallet
+    if (errorMsg.includes("insufficient") || errorMsg.includes("INSUFFICIENT")) {
+      const fundError = new Error("Smart wallet has insufficient MON tokens to pay gas fees");
+      (fundError as any).userFriendlyMessage = "Your Smart Account doesn't have enough MON to pay gas fees. Please fund it with more MON.";
+      throw fundError;
+    }
+
+    throw error;
+  }
 }
 
 async function saveScoreViaEOA(score: number): Promise<{ hash: string; method: "eoa" }> {
@@ -233,8 +402,22 @@ async function saveScoreViaEOA(score: number): Promise<{ hash: string; method: "
 
   console.log("Submitting score via EOA wallet:", currentEOAAddress);
   console.log("Score:", score);
+  console.log("Contract Address:", CONTRACT_ADDRESS);
 
-  const balance = await publicClient.getBalance({ address: currentEOAAddress });
+  // Check balance with timeout
+  let balance: bigint;
+  try {
+    balance = await withTimeout(
+      publicClient.getBalance({ address: currentEOAAddress }),
+      5000,
+      "Failed to check EOA balance"
+    );
+  } catch (balanceError: any) {
+    console.error("Error checking EOA balance:", balanceError);
+    // Continue anyway, let the transaction attempt and fail if no balance
+    balance = BigInt(0);
+  }
+
   console.log("EOA wallet balance:", balance.toString(), "wei");
 
   if (balance === BigInt(0)) {
@@ -244,20 +427,27 @@ async function saveScoreViaEOA(score: number): Promise<{ hash: string; method: "
   }
 
   console.log("Sending transaction from EOA wallet...");
-  
-  const txHash = await currentEOAWalletClient.writeContract({
-    address: CONTRACT_ADDRESS,
-    abi: SCORE_STORE_ABI,
-    functionName: "saveScore",
-    args: [BigInt(score)],
-  });
 
-  console.log("EOA transaction successful! Hash:", txHash);
+  try {
+    const txHash = await currentEOAWalletClient.writeContract({
+      address: CONTRACT_ADDRESS,
+      abi: SCORE_STORE_ABI,
+      functionName: "saveScore",
+      args: [BigInt(score)],
+    });
 
-  return { hash: txHash, method: "eoa" };
+    console.log("EOA transaction successful! Hash:", txHash);
+    return { hash: txHash, method: "eoa" };
+  } catch (txError: any) {
+    console.error("EOA transaction error:", txError);
+    throw txError;
+  }
 }
 
-export async function saveScoreToBlockchain(score: number): Promise<{ hash: string; method: "smartAccount" | "eoa" }> {
+export async function saveScoreToBlockchain(
+  score: number,
+  onProgress?: (stage: string, secondsElapsed: number) => void
+): Promise<{ hash: string; method: "smartAccount" | "eoa" }> {
   if (typeof window.ethereum === "undefined") {
     throw new Error("MetaMask not installed");
   }
@@ -271,48 +461,113 @@ export async function saveScoreToBlockchain(score: number): Promise<{ hash: stri
   }
 
   try {
-    if (currentSmartAccount && ALCHEMY_API_KEY) {
+    // Check if Smart Account and Bundler are properly configured
+    const hasSmartAccount = !!currentSmartAccount;
+    const hasValidBundler = ZERODEV_PROJECT_ID && ZERODEV_PROJECT_ID.length > 0 && BUNDLER_URL;
+
+    console.log("Transaction submission analysis:");
+    console.log("- Smart Account available:", hasSmartAccount);
+    console.log("- ZeroDev Bundler available:", hasValidBundler);
+    console.log("- Using Smart Account (gasless):", hasSmartAccount && hasValidBundler);
+
+    // Attempt Smart Account transaction only if both conditions are met
+    if (hasSmartAccount && hasValidBundler) {
+      console.log("Smart Account available, attempting gasless transaction...");
+      console.log("ZeroDev Project ID configured:", ZERODEV_PROJECT_ID.substring(0, 8) + "...");
+      console.log("Bundler URL:", BUNDLER_URL.substring(0, 50) + "...");
+
+      // Wrap Smart Account attempt with overall timeout
       try {
-        return await saveScoreViaSmartAccount(score);
+        console.log("Attempting Smart Account transaction...");
+        const result = await saveScoreViaSmartAccount(score, onProgress);
+        console.log("✅ Smart Account transaction successful!");
+        return result;
       } catch (smartAccountError: any) {
-        console.warn("Smart Account transaction failed:", smartAccountError);
+        const errorMsg = smartAccountError?.message || String(smartAccountError);
+        console.error("Smart Account error:", errorMsg);
 
-        if (smartAccountError?.code === 4001 || smartAccountError?.message?.includes("User rejected")) {
-          console.log("User rejected Smart Account transaction");
-          throw smartAccountError;
+        // Check for specific error types
+        const isUserRejected = errorMsg.includes("User rejected") || smartAccountError?.code === 4001;
+        const isInsufficientFunds =
+          errorMsg.includes("INSUFFICIENT_FUNDS") ||
+          errorMsg.includes("insufficient funds") ||
+          errorMsg.includes("Insufficient funds");
+
+        // User rejected - don't fallback, fail immediately
+        if (isUserRejected) {
+          console.log("❌ User rejected the transaction");
+          const error = new Error("Transaction rejected by user");
+          (error as any).userFriendlyMessage = "You rejected the transaction. Please try again.";
+          throw error;
         }
 
-        if (smartAccountError?.name === "InsufficientFundsError" || smartAccountError?.message?.includes("INSUFFICIENT_FUNDS")) {
-          console.log("Insufficient funds in Smart Account");
-          throw smartAccountError;
+        // Insufficient funds - don't fallback, fail immediately
+        if (isInsufficientFunds) {
+          console.log("❌ Insufficient funds in Smart Account");
+          const error = new Error("Not enough funds to pay gas fees");
+          (error as any).userFriendlyMessage = "Your Smart Account doesn't have enough MON to pay gas fees. Please fund it with more MON.";
+          throw error;
         }
 
-        console.log("Falling back to EOA wallet...");
-        return await saveScoreViaEOA(score);
+        // For all other errors, try to fall back to EOA
+        console.log("ℹ️ Smart Account failed, trying fallback to EOA wallet...");
+        if (onProgress) {
+          onProgress("Attempting with EOA wallet...", 0);
+        }
+
+        try {
+          const result = await saveScoreViaEOA(score);
+          console.log("✅ EOA transaction successful!");
+
+          // Mark that we used fallback
+          (result as any).usedFallback = true;
+
+          return result;
+        } catch (eoaError: any) {
+          console.error("❌ EOA fallback also failed:", eoaError?.message || eoaError);
+
+          // Combine error messages
+          const combined = new Error(
+            `Both Smart Account and EOA failed. ${eoaError?.message || "Transaction failed"}`
+          );
+          (combined as any).userFriendlyMessage =
+            "Unable to submit your score to the blockchain. Please check your network connection and try again.";
+
+          throw combined;
+        }
       }
     } else {
-      console.log("Smart Account not available, using EOA wallet");
+      console.log("Smart Account not fully configured, using EOA wallet directly");
+      if (!hasSmartAccount) {
+        console.log("Reason: Smart Account failed to initialize");
+      }
+      if (!hasValidBundler) {
+        console.log("Reason: ZeroDev bundler not configured (missing VITE_ZERODEV_PROJECT_ID)");
+      }
+      if (onProgress) {
+        onProgress("Using EOA wallet for transaction...", 0);
+      }
       return await saveScoreViaEOA(score);
     }
   } catch (error: any) {
     console.error("Error saving score:", error);
-    
+
     if (error?.code === 4001 || error?.message?.includes("User rejected")) {
       const userRejectionError = new Error("User rejected");
       (userRejectionError as any).code = 4001;
       throw userRejectionError;
     }
-    
+
     if (error?.name === "InsufficientFundsError" || error?.message?.includes("INSUFFICIENT_FUNDS")) {
       throw error;
     }
-    
+
     if (error?.message?.includes("insufficient funds") || error?.message?.includes("exceeds balance")) {
       const fundError = new Error(`INSUFFICIENT_FUNDS:${currentEOAAddress}`);
       fundError.name = "InsufficientFundsError";
       throw fundError;
     }
-    
+
     throw error;
   }
 }

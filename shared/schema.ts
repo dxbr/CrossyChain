@@ -23,6 +23,8 @@ export const transactionDataSchema = z.object({
   error: z.string().optional(),
   explorerUrl: z.string().optional(),
   method: transactionMethodSchema.optional(),
+  progressMessage: z.string().optional(),
+  secondsElapsed: z.number().optional(),
 });
 
 export const scoreDataSchema = z.object({

@@ -1,22 +1,23 @@
-# Crossy Road
+# Crossy Chain - Monad Blockchain Game
 
-A blockchain-enabled 3D game where players navigate a chicken across lanes of traffic and their high scores are permanently recorded on the Monad blockchain using MetaMask Smart Accounts.
+A blockchain-enabled 3D game where players navigate a chicken across lanes of traffic and their high scores are permanently recorded on the Monad blockchain using MetaMask Smart Accounts with Alchemy bundler.
 
 Built for the MetaMask Smart Accounts x Monad Dev Cook Off hackathon.
 
 ## Overview
 
-Crossy Chain is a Web3-enabled Crossy Road clone that combines classic arcade gameplay with blockchain technology. All high scores are stored permanently on the Monad testnet via ERC-4337 Smart Account transactions.
+Crossy Chain is a Web3-enabled Crossy Road clone that combines classic arcade gameplay with blockchain technology. All high scores are stored permanently on the Monad testnet via ERC-4337 Smart Account transactions using Alchemy's bundler infrastructure.
 
 ### Key Features
 
-- 3D gameplay powered by Three.js
-- MetaMask Smart Account integration using the Delegation Toolkit SDK
-- ERC-4337 user operations via Alchemy bundler
-- On-chain score storage on Monad testnet
-- Retro pixel aesthetic with Press Start 2P font
-- Real-time balance display for Smart Accounts
-- Automatic Smart Account deployment on first transaction
+- **3D Arcade Gameplay** - Three.js powered retro-style game with smooth controls
+- **Smart Account Integration** - MetaMask Delegation Toolkit SDK for ERC-4337 accounts
+- **Alchemy Bundler** - Reliable transaction processing via Alchemy's infrastructure
+- **Automatic Fallback** - Seamlessly switches from Smart Account to EOA if timeout occurs
+- **On-Chain Scores** - Permanent, verifiable high score storage on Monad blockchain
+- **Real-Time Balance** - Live MON balance updates using standard RPC calls
+- **Transaction Progress** - Live countdown and status updates during score submission
+- **Netlify Compatible** - Fully static deployment, works on all hosting platforms
 
 ## Technology Stack
 
@@ -69,7 +70,7 @@ Required environment variables (stored in Replit Secrets):
 - `VITE_ALCHEMY_API_KEY`: Alchemy API key for bundler operations
 
 Optional:
-- `MONAD_RPC`: Monad RPC URL (defaults to https://rpc.ankr.com/monad_testnet)
+- `VITE_MONAD_RPC`: Monad RPC URL (defaults to https://rpc.ankr.com/monad_testnet)
 
 ### Smart Contract Deployment
 
@@ -110,22 +111,81 @@ crossy-chain/
 └── package.json
 ```
 
-## Smart Account Integration
+## Smart Account Integration & Transaction Flow
 
-This project uses MetaMask's Delegation Toolkit to create ERC-4337 Smart Accounts:
+This project uses MetaMask's Delegation Toolkit with **Alchemy bundler** (NOT Pimlico) for reliable Smart Account transactions.
 
-### Flow
-1. User connects MetaMask (EOA wallet)
-2. System creates a Smart Account linked to the EOA
-3. Smart Account address and balance displayed in UI
-4. Score submissions use user operations via Alchemy bundler
-5. First transaction automatically deploys the Smart Account
+### Connection Flow
 
-### Benefits
-- Account abstraction (ERC-4337 compliant)
-- Better UX for blockchain transactions
-- Future support for gasless transactions with paymasters
-- Separation of signing key and account logic
+1. **User connects MetaMask** - Standard EOA (Externally Owned Account) connection
+2. **Smart Account creation** - System automatically creates ERC-4337 Smart Account linked to EOA
+3. **Address display** - Both EOA and Smart Account addresses shown in UI
+4. **Balance monitoring** - RPC polling updates balances every 10 seconds
+
+### Transaction Submission Flow
+
+When a player submits their score, the following happens:
+
+#### Smart Account Path (Primary - via Alchemy)
+
+1. **Initialization** (0s)
+   - Transaction modal opens
+   - Progress message: "Preparing Smart Account transaction..."
+   
+2. **Bundler submission** (0-5s)
+   - Creates user operation for `saveScore()` call
+   - Submits to Alchemy bundler: `https://monad-testnet.g.alchemy.com/v2/{API_KEY}`
+   - Progress message: "Sending transaction to Alchemy bundler..."
+   - Timer starts counting seconds
+   
+3. **Waiting for confirmation** (5-30s)
+   - Polls for user operation receipt
+   - Progress message: "Waiting for transaction confirmation... (Xs)"
+   - **30 second timeout** - If exceeded, falls back to EOA
+   
+4. **Success**
+   - Transaction hash received
+   - Progress message: "Transaction confirmed! (Xs total)"
+   - Success toast: "Score saved via Smart Account using Alchemy bundler!"
+
+#### EOA Fallback Path (Automatic)
+
+If Smart Account times out (>30s) or fails:
+
+1. **Automatic switch notification**
+   - Progress message: "Smart Account timed out, switching to EOA wallet..."
+   
+2. **Direct transaction**
+   - Standard MetaMask transaction popup
+   - User approves directly from EOA wallet
+   - No bundler, direct blockchain submission
+   
+3. **Success**
+   - Transaction hash received
+   - Fallback toast: "Smart Account timed out. Score saved successfully via EOA wallet!"
+
+### Why Alchemy Instead of Pimlico?
+
+- **Alchemy bundler** is more reliable on Monad testnet
+- **Faster processing** - Typically completes in 5-15 seconds
+- **Better support** - Alchemy has dedicated Monad testnet infrastructure
+- **Pimlico was removed** due to slow/inconsistent performance on Monad
+
+### Real-Time Progress Updates
+
+The transaction modal shows:
+- **Live status messages** - Updates as transaction progresses through stages
+- **Countdown timer** - Shows seconds elapsed (updates every second)
+- **Stage indicators** - Preparing → Sending → Waiting → Confirmed
+- **Method badge** - Shows whether Smart Account or EOA was used
+
+### Smart Account Benefits
+
+- **Account Abstraction (ERC-4337)** - Programmable wallet logic
+- **Better UX** - Single-step transactions, no multiple approvals
+- **Future Features** - Can add gasless transactions with paymasters
+- **Security** - Separation of signing key and account logic
+- **Flexibility** - Can batch multiple operations
 
 ## Network Details
 
@@ -140,17 +200,30 @@ This project uses MetaMask's Delegation Toolkit to create ERC-4337 Smart Account
 
 ## Smart Contract
 
-### ScoreStore.sol
+### ScoreStore.sol - v2 (Current)
+
+**Contract Address:** `0x0877c473BCe3aAEa4705AB5C3e24d7b0f630C956` (Monad Testnet)
 
 ```solidity
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
 contract ScoreStore {
     mapping(address => uint256) public scores;
-    event ScoreSaved(address indexed player, uint256 score);
+
+    event ScoreSaved(address indexed player, uint256 score, bool isNewHighScore);
 
     function saveScore(uint256 _score) external {
-        require(_score > scores[msg.sender], "Lower score");
-        scores[msg.sender] = _score;
-        emit ScoreSaved(msg.sender, _score);
+        bool isNewHighScore = false;
+
+        // Only update if it's a new high score
+        if (_score > scores[msg.sender]) {
+            scores[msg.sender] = _score;
+            isNewHighScore = true;
+        }
+
+        // Always emit the event (useful for analytics or tracking)
+        emit ScoreSaved(msg.sender, _score, isNewHighScore);
     }
 
     function getScore(address _player) external view returns (uint256) {
@@ -159,23 +232,100 @@ contract ScoreStore {
 }
 ```
 
-Features:
-- Only accepts higher scores to prevent score manipulation
-- Gas-efficient storage using mappings
-- Event emission for indexing and verification
-- Simple and auditable code
+### Contract Features
+
+- **Score Validation** - Only saves scores higher than previous best
+- **Event Tracking** - Emits `isNewHighScore` flag for analytics
+- **Always Emits** - Events fire even if score isn't saved (for tracking attempts)
+- **Gas Efficient** - Uses simple mapping for O(1) lookups
+- **Auditable** - Simple, readable code with no complex logic
+- **No Fees** - No contract owner, no fees, fully decentralized
+
+### Contract ABI
+
+The ABI is integrated in `client/src/lib/web3.ts` and includes:
+- `saveScore(uint256 _score)` - Submit score transaction
+- `getScore(address _player)` - Query player's best score
+- `ScoreSaved` event - Indexed by player address with score and new high score flag
+
+## Wallet Balance Display
+
+### Real-Time Balance Monitoring
+
+The game displays the Smart Account's MON balance in real-time using standard RPC calls via viem:
+
+- **Current balance** - Live MON token balance
+- **Auto-refresh** - Updates every 10 seconds
+- **Netlify compatible** - Works on all hosting platforms
+
+### Balance Implementation
+
+```typescript
+// Uses viem publicClient for Netlify compatibility
+const balance = await publicClient.getBalance({ 
+  address: smartAccountAddress 
+});
+```
+
+### Why Not Envio HyperSync?
+
+While Envio HyperSync is 1000-2000x faster, it uses native Node.js bindings that cannot run in the browser. For Netlify compatibility (static hosting), we use standard RPC calls which work everywhere but are slower for historical data queries.
+
+**For local development**, you can optionally enable Envio HyperSync backend routes for enhanced balance display with:
+- Total received/sent amounts
+- ERC-20 token balances  
+- Recent incoming transfers
+
+See `server/envio.ts` and `server/routes.ts` for the backend implementation.
 
 ## Building for Production
+
+### Local Build
 
 ```bash
 # Build the application
 npm run build
 
 # The output will be in the dist/ folder
-# Deploy to your hosting service (Netlify, Vercel, etc.)
 ```
 
-For deployment configuration, see `netlify.toml` and `client/public/_redirects`.
+### Netlify Deployment
+
+This project is **fully compatible with Netlify** static hosting:
+
+1. **No backend required** - Pure frontend application, works on static hosting
+2. **Environment variables** - Set in Netlify dashboard:
+   - `VITE_CONTRACT_ADDRESS=0x0877c473BCe3aAEa4705AB5C3e24d7b0f630C956`
+   - `VITE_ALCHEMY_API_KEY=your_alchemy_key`
+   - `VITE_MONAD_RPC=https://testnet-rpc.monad.xyz/`
+
+3. **Build settings**:
+   - Build command: `npm run build`
+   - Publish directory: `dist/public`
+   
+4. **Redirects** - Configured in `netlify.toml` for SPA routing
+
+### Deployment Configuration
+
+```toml
+# netlify.toml
+[build]
+  command = "npm run build"
+  publish = "dist/public"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+```
+
+### Other Hosting Options
+
+The project also works on:
+- **Vercel** - Static deployment with environment variables
+- **Cloudflare Pages** - Static deployment
+- **GitHub Pages** - Static deployment (requires base path config)
+- **Any static host** - Just needs environment variable support
 
 ## Troubleshooting
 

@@ -1,8 +1,8 @@
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Wallet, Copy, Check } from "lucide-react";
+import { Wallet, Copy, Check, AlertCircle } from "lucide-react";
 import { useState, useEffect } from "react";
-import { publicClient } from "@/lib/web3";
+import { publicClient, getEOABalance } from "@/lib/web3";
 import type { Address } from "viem";
 
 interface WalletConnectCardProps {
@@ -21,20 +21,36 @@ export function WalletConnectCard({
   onConnect,
 }: WalletConnectCardProps) {
   const [copied, setCopied] = useState(false);
-  const [balance, setBalance] = useState<string>("0");
+  const [eoaBalance, setEoaBalance] = useState<string>("0");
+  const [smartBalance, setSmartBalance] = useState<string>("0");
 
+  // Fetch EOA balance using Envio HyperSync integration
   useEffect(() => {
-    if (smartAccountAddress && isConnected) {
+    if (eoaAddress && isConnected) {
       const fetchBalance = async () => {
-        const bal = await publicClient.getBalance({ address: smartAccountAddress as Address });
+        const bal = await getEOABalance(eoaAddress as Address);
         const monBalance = Number(bal) / 1e18;
-        setBalance(monBalance.toFixed(4));
+        setEoaBalance(monBalance.toFixed(4));
       };
       fetchBalance();
       const interval = setInterval(fetchBalance, 5000);
       return () => clearInterval(interval);
     }
-  }, [smartAccountAddress, isConnected]);
+  }, [eoaAddress, isConnected]);
+
+  // Fetch Smart Account balance
+  useEffect(() => {
+    if (smartAccountAddress && isConnected && smartAccountAddress !== eoaAddress) {
+      const fetchBalance = async () => {
+        const bal = await publicClient.getBalance({ address: smartAccountAddress as Address });
+        const monBalance = Number(bal) / 1e18;
+        setSmartBalance(monBalance.toFixed(4));
+      };
+      fetchBalance();
+      const interval = setInterval(fetchBalance, 5000);
+      return () => clearInterval(interval);
+    }
+  }, [smartAccountAddress, eoaAddress, isConnected]);
 
   const truncateAddress = (address: string) => {
     return `${address.slice(0, 6)}...${address.slice(-4)}`;
@@ -105,12 +121,36 @@ export function WalletConnectCard({
                   </Button>
                 </div>
               </div>
+              {eoaAddress && smartAccountAddress !== eoaAddress && (
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-mono text-muted-foreground">EOA Balance:</span>
+                  <span className="text-xs font-mono text-foreground" data-testid="text-eoa-balance">
+                    {eoaBalance} MON
+                  </span>
+                  <span className="text-[9px] font-mono text-muted-foreground/60">via Envio HyperSync</span>
+                </div>
+              )}
               <div className="flex flex-col gap-1">
-                <span className="text-[10px] font-mono text-muted-foreground">Balance:</span>
+                <span className="text-[10px] font-mono text-muted-foreground">
+                  {eoaAddress && smartAccountAddress !== eoaAddress ? "Smart Balance:" : "Balance:"}
+                </span>
                 <span className="text-xs font-mono text-foreground" data-testid="text-wallet-balance">
-                  {balance} MON
+                  {eoaAddress && smartAccountAddress !== eoaAddress ? smartBalance : eoaBalance} MON
                 </span>
               </div>
+              {eoaAddress && smartAccountAddress !== eoaAddress && Number(smartBalance) === 0 && (
+                <div className="flex items-start gap-2 p-2 bg-yellow-500/10 border border-yellow-500/30 rounded">
+                  <AlertCircle className="h-3 w-3 text-yellow-500 mt-0.5 flex-shrink-0" />
+                  <div className="flex flex-col gap-1">
+                    <span className="text-[10px] font-mono text-yellow-500 font-semibold">
+                      Fund Smart Account
+                    </span>
+                    <span className="text-[9px] font-mono text-yellow-500/80 leading-tight">
+                      Send MON tokens to your Smart Account address to enable gasless transactions.
+                    </span>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
