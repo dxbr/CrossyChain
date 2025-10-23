@@ -17,6 +17,8 @@ interface TransactionModalProps {
   error?: string;
   explorerUrl?: string;
   method?: "smartAccount" | "eoa";
+  progressMessage?: string;
+  secondsElapsed?: number;
   onClose: () => void;
 }
 
@@ -27,6 +29,8 @@ export function TransactionModal({
   error,
   explorerUrl,
   method,
+  progressMessage,
+  secondsElapsed,
   onClose,
 }: TransactionModalProps) {
   const getStatusIcon = () => {
@@ -58,6 +62,9 @@ export function TransactionModal({
   const getStatusDescription = () => {
     switch (status) {
       case "pending":
+        if (progressMessage) {
+          return progressMessage;
+        }
         return "Your score is being recorded on the Monad blockchain. This may take a few moments.";
       case "success":
         return "Your high score has been permanently saved on-chain and is now part of the blockchain!";
@@ -84,6 +91,13 @@ export function TransactionModal({
           <DialogDescription className="text-center text-sm font-mono" data-testid="text-tx-description">
             {getStatusDescription()}
           </DialogDescription>
+          {status === "pending" && secondsElapsed !== undefined && (
+            <div className="mt-2 text-center">
+              <Badge variant="outline" className="text-xs font-mono" data-testid="badge-timer">
+                ⏱️ {secondsElapsed}s elapsed
+              </Badge>
+            </div>
+          )}
         </DialogHeader>
 
         {method && status === "success" && (

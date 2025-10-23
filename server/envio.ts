@@ -3,7 +3,11 @@ import type { Address } from 'viem';
 
 // Envio HyperSync configuration for Monad Testnet
 const HYPERSYNC_URL = 'https://monad-testnet.hypersync.xyz';
-const HYPERSYNC_TOKEN = '478b4ac4-c83e-4a60-9eb8-d689e14772fa';
+const HYPERSYNC_TOKEN = process.env.ENVIO_API_KEY || '';
+
+if (!HYPERSYNC_TOKEN) {
+  console.warn('ENVIO_API_KEY environment variable not set. Envio features will not work.');
+}
 
 // ERC-20 Transfer event signature
 const TRANSFER_SIGNATURE = '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef';

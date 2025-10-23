@@ -14,6 +14,7 @@ import type { WalletState, TransactionData } from "@shared/schema";
 import { initializeGame } from "@/lib/game";
 import { connectWallet, saveScoreToBlockchain, getExplorerUrl, getCurrentSmartAccountAddress } from "@/lib/web3";
 import { useToast } from "@/hooks/use-toast";
+import { useBlockchainNotifications } from "@/hooks/use-blockchain-notifications";
 import type { Address } from "viem";
 
 export default function Game() {
@@ -33,22 +34,13 @@ export default function Game() {
 
   const gameInstanceRef = useRef<any>(null);
 
+  // Enable blockchain notifications for the Smart Account address
+  useBlockchainNotifications(walletState.smartAccountAddress as Address | undefined);
+
   useEffect(() => {
     if (!canvasRef.current || !walletState.isConnected) return;
 
     const initGame = async () => {
-      // Wait for Three.js to load
-      let attempts = 0;
-      while (!window.THREE && attempts < 50) {
-        await new Promise(resolve => setTimeout(resolve, 100));
-        attempts++;
-      }
-
-      if (!window.THREE) {
-        console.error("Three.js failed to load");
-        return;
-      }
-
       const game = initializeGame(
         canvasRef.current!,
         (newScore) => setScore(newScore),
@@ -135,21 +127,36 @@ export default function Game() {
     if (!walletState.isConnected || score === 0) return;
 
     setShowTransactionModal(true);
-    setTransactionData({ status: "pending" });
+    setTransactionData({ status: "pending", progressMessage: "Initializing transaction...", secondsElapsed: 0 });
 
     try {
-      const result = await saveScoreToBlockchain(score);
+      const result = await saveScoreToBlockchain(score, (stage, secondsElapsed) => {
+        setTransactionData(prev => ({
+          ...prev,
+          status: "pending",
+          progressMessage: stage,
+          secondsElapsed: secondsElapsed,
+        }));
+      });
+      
       setTransactionData({
         status: "success",
         hash: result.hash,
         explorerUrl: getExplorerUrl(result.hash),
         method: result.method,
+        progressMessage: "Transaction confirmed!",
       });
 
       if (result.method === "eoa") {
         toast({
-          title: "Fallback Used",
-          description: "Score saved via EOA wallet (Smart Account timed out)",
+          title: "Fallback to EOA Wallet",
+          description: "Smart Account timed out. Score saved successfully via EOA wallet!",
+          variant: "default",
+        });
+      } else {
+        toast({
+          title: "Success!",
+          description: "Score saved via Smart Account using gasless transaction (ZeroDev)!",
           variant: "default",
         });
       }
@@ -221,7 +228,7 @@ export default function Game() {
         onConnect={handleConnectWallet}
       />
 
-      {/* Envio HyperSync - Wallet Balance Display */}
+      {/* Wallet Balance Display */}
       {walletState.isConnected && walletState.smartAccountAddress && (
         <div className="fixed bottom-32 left-8 z-40 w-80">
           <WalletBalanceCard 
@@ -253,6 +260,8 @@ export default function Game() {
         error={transactionData.error}
         explorerUrl={transactionData.explorerUrl}
         method={transactionData.method}
+        progressMessage={transactionData.progressMessage}
+        secondsElapsed={transactionData.secondsElapsed}
         onClose={() => setShowTransactionModal(false)}
       />
 

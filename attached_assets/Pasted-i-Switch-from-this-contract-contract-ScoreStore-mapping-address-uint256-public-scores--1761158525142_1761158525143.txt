@@ -1,0 +1,138 @@
+i Switch from this contract
+
+contract ScoreStore {
+    mapping(address => uint256) public scores;
+    event ScoreSaved(address indexed player, uint256 score);
+
+    function saveScore(uint256 _score) external {
+        require(_score > scores[msg.sender], "Lower score");
+        scores[msg.sender] = _score;
+        emit ScoreSaved(msg.sender, _score);
+    }
+
+    function getScore(address _player) external view returns (uint256) {
+        return scores[_player];
+    }
+} 
+
+to this
+
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
+
+contract ScoreStore {
+    mapping(address => uint256) public scores;
+
+    event ScoreSaved(address indexed player, uint256 score, bool isNewHighScore);
+
+    function saveScore(uint256 _score) external {
+        bool isNewHighScore = false;
+
+        // Only update if it's a new high score
+        if (_score > scores[msg.sender]) {
+            scores[msg.sender] = _score;
+            isNewHighScore = true;
+        }
+
+        // Always emit the event (useful for analytics or tracking)
+        emit ScoreSaved(msg.sender, _score, isNewHighScore);
+    }
+
+    function getScore(address _player) external view returns (uint256) {
+        return scores[_player];
+    }
+}
+
+
+New Contract - 0x0877c473BCe3aAEa4705AB5C3e24d7b0f630C956
+
+ABI
+
+[
+	{
+		"inputs": [
+			{
+				"internalType": "uint256",
+				"name": "_score",
+				"type": "uint256"
+			}
+		],
+		"name": "saveScore",
+		"outputs": [],
+		"stateMutability": "nonpayable",
+		"type": "function"
+	},
+	{
+		"anonymous": false,
+		"inputs": [
+			{
+				"indexed": true,
+				"internalType": "address",
+				"name": "player",
+				"type": "address"
+			},
+			{
+				"indexed": false,
+				"internalType": "uint256",
+				"name": "score",
+				"type": "uint256"
+			},
+			{
+				"indexed": false,
+				"internalType": "bool",
+				"name": "isNewHighScore",
+				"type": "bool"
+			}
+		],
+		"name": "ScoreSaved",
+		"type": "event"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "_player",
+				"type": "address"
+			}
+		],
+		"name": "getScore",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	},
+	{
+		"inputs": [
+			{
+				"internalType": "address",
+				"name": "",
+				"type": "address"
+			}
+		],
+		"name": "scores",
+		"outputs": [
+			{
+				"internalType": "uint256",
+				"name": "",
+				"type": "uint256"
+			}
+		],
+		"stateMutability": "view",
+		"type": "function"
+	}
+]
+
+And fix the issue can't sumbit transaction VIA smart Wallet, when use smart wallet to sumbit tx keep loading never sumbited to blockchain, try do it, and it is not complted withing given time peroiud must switch to EOA wallet to sumbit tx, and all massage are must shows, when Smart wallet loading it must shows real time notification as Smart wallet loading time, like countdown, notification, u can use ENVIO for it, HyperSync API Tokens=478b4ac4-c83e-4a60-9eb8-d689e14772fa and tx not completed withing given time peroid to smart wallet shows massage to switch tx to EOA wallet
+
+and Removed Pimlico completely and inseaed of Pimlico use ALCHEMY to smart wallet to sumbit tx and find reference by searching online
+
+MONAD_RPC=https://testnet-rpc.monad.xyz/
+VITE_CONTRACT_ADDRESS=0x8c2b26d35c3c749ff1f4dc91c36a81b304ce36ee
+VITE_ALCHEMY_API_KEY=pPJfc3h4sTyv8Ps37HF4G
+
+and update readme.md file to this point, it must cleary write all the logic of this game, like smart contract and Smart wallet tx switch to EAO, WRITE EVRY ASPECT
