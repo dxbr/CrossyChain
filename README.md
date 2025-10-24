@@ -1,8 +1,7 @@
 # Crossy Road
 
-[![Watch the video](https://img.youtube.com/vi/rQdPsKu722g/0.jpg)](https://www.youtube.com/watch?v=rQdPsKu722g)
-
-Crossy Road is a blockchain-enabled 3D game where players navigate a chicken across lanes of traffic and their high scores are permanently recorded on the Monad blockchain using MetaMask Smart Accounts with Alchemy bundler.
+<a href="https://www.youtube.com/watch?v=rQdPsKu722g" target="_blank"> <img src="https://img.youtube.com/vi/rQdPsKu722g/0.jpg" alt="Watch Gameplay" width="560" /> </a> <br>
+<p>Crossy Road is a blockchain-enabled 3D game where players navigate a chicken across lanes of traffic and their high scores are permanently recorded on the Monad blockchain using MetaMask Smart Accounts with Alchemy bundler.</p>
 
 Built for the MetaMask Smart Accounts x Monad Dev Cook Off hackathon.
 
